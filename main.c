@@ -3,10 +3,15 @@
 #include <unistd.h>
 #include <assert.h>
 #include <libusb-1.0/libusb.h>
+#include "ff.h"
 
 libusb_device_handle *devh;
 static int ep_in_addr = 0x83;
 static int ep_out_addr = 0x02;
+
+#define FF_STORAGE_SIZE (1024*1024)
+unsigned char ff_storage[FF_STORAGE_SIZE];
+FATFS fs;
 
 int write_chars(const char *c) {
     int actual_length;
@@ -129,7 +134,7 @@ int msc_0x12_inquiry(unsigned char lun, int verbose) {
     }
 
     size = 64;
-    msc_in("SCSI: Data In LUN", data, &size, verbose);
+    rc = msc_in("SCSI: Data In LUN", data, &size, verbose);
     if (rc < 0) {
         return rc;
     }
@@ -164,11 +169,11 @@ int msc_0x25_readcapacity(unsigned char lun, int verbose) {
     if (verbose >= 10) {
         unsigned long llba = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + (data[3]);
         unsigned long blib = (data[4] << 24) + (data[5] << 16) + (data[6] << 8) + (data[7]);
-        printf("  Toal: %d, Block Length in Bytes: %d\n", llba * blib, blib);
+        printf("  Toal: %ld, Block Length in Bytes: %ld\n", llba * blib, blib);
     }
 
     size = 64;
-    msc_in("SCSI: Data In LUN", data, &size, verbose);
+    rc = msc_in("SCSI: Data In LUN", data, &size, verbose);
     if (rc < 0) {
         return rc;
     }
@@ -176,7 +181,92 @@ int msc_0x25_readcapacity(unsigned char lun, int verbose) {
     return rc;
 }
 
+int msc_0x28_read10(unsigned char lun, int verbose, unsigned long lba, unsigned short count, unsigned char *buf512) {
+    int rc;
+    unsigned long transfer_length = 1; // 512 byte
 
+    unsigned char data[4096] = {
+        0x55, 0x53, 0x42, 0x43, // Signature
+        0xA0, 0x59, 0x9b, 0x18, // Tag
+        0x00, 0x10, 0x00, 0x00, // DataTransferLength
+        0x80, 0x00 | lun, 0x0A, // Flag, LUN, CBWCBLength
+        0x28, 0x00,
+        (unsigned char)(lba >> 24),
+        (unsigned char)(lba >> 16),
+        (unsigned char)(lba >> 8),
+        (unsigned char)(lba >> 0),
+        0x00,
+        (unsigned char)(count >> 8),
+        (unsigned char)(count),
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    int size;
+
+    rc = msc_out("SCSI: Read10 LUN: 0x00", data, 31, verbose);
+    if (rc < 0) {
+        return rc;
+    }
+
+    size = 512;
+    rc = msc_in("SCSI: Data In LUN", buf512, &size, verbose);
+    if (rc < 0) {
+        printf("1\n");
+        return rc;
+    }
+
+    size = sizeof(data);
+    rc = msc_in("SCSI: Data In LUN", data, &size, verbose);
+    if (rc < 0) {
+        printf("1\n");
+        return rc;
+    }
+
+    return rc;
+}
+
+
+int runfs() {
+    FRESULT res;
+    BYTE work[FF_MAX_SS];
+
+    memset(&fs, 0, sizeof(fs));
+    memset(work, 0, sizeof(work));
+
+    res = f_mount(&fs, "", 0);
+    if (res) {
+        printf("f_mount : %d\n", res);
+        return res;
+    }
+
+    {
+        FRESULT fr;
+        FIL f;
+        BYTE buffer[4096];
+        UINT br;
+
+        fr = f_open(&f, "INFO_UF2.TXT", FA_READ);
+        if (fr) {
+            printf("f_open2 %d\n", fr);
+            return fr;
+        }
+
+        fr = f_read(&f, buffer, sizeof(buffer), &br);
+        if (fr) {
+            printf("f_read2 %d\n", fr);
+            return fr;
+        }
+
+        printf("%s\n", buffer);
+
+        fr = f_close(&f);
+        if (fr) {
+            printf("f_close2 %d\n", fr);
+            return fr;
+        }
+    }
+
+    return 0;
+}
 
 
 int main(int argc, char **argv) {
@@ -215,7 +305,18 @@ int main(int argc, char **argv) {
     }
 
     msc_0x12_inquiry(0, 0);
-    msc_0x25_readcapacity(0, 10);
+    msc_0x25_readcapacity(0, 0);
+    {
+        //unsigned char buf[512];
+        //msc_0x28_read10(0, 10, 0, 1, &buf[0]);
+        
+        rc = runfs();
+        if (rc) {
+            printf("runfs error %d\n", rc);
+        }
+    }
+    //sleep(1);
+    //msc_0x28_read10(0, 10, 1);
 
     if (0) {
 #define ACM_CTRL_DTR 0x001

@@ -1,10 +1,23 @@
 DEVICE_PATH=`termux-usb -l | gojq -rM '.[0]'`
 
-all: req usbtest
-	termux-usb -e ./usbtest $(DEVICE_PATH)
+OUT = usbtest
+CFLAGS = -I./source -I.
+SRC = diskio.c source/ff.c source/ffsystem.c source/ffunicode.c main.c
+OBJ = $(SRC:%.c=%.o)
 
-usbtest: main.c
-	gcc main.c -lusb-1.0 -o usbtest
+all: req $(OUT)
+	termux-usb -e ./$(OUT) $(DEVICE_PATH)
+
+$(OUT): main.c $(OBJ)
+	gcc $(OBJ) -lusb-1.0 -o $(OUT)
+
+.c.o:
+	gcc $(CFLAGS) -c $< -o $@
 
 req:
 	termux-usb -r $(DEVICE_PATH)
+
+clean:
+	-rm -rf $(OBJ) $(OUT)
+
+FORCE:
