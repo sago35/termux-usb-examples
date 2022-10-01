@@ -13,6 +13,18 @@ static int ep_out_addr = 0x02;
 unsigned char ff_storage[FF_STORAGE_SIZE];
 FATFS fs;
 
+#if 1
+// android
+#define errno_t int
+int fopen_s(FILE **fp, char *filename, char *mode) {
+    *fp = fopen(filename, mode);
+    if (*fp == 0) {
+        return -1;
+    }
+    return 0;
+}
+#endif
+
 int write_chars(const char *c) {
     int actual_length;
     int size = (int)(strlen(c));
@@ -224,6 +236,50 @@ int msc_0x28_read10(unsigned char lun, int verbose, unsigned long lba, unsigned 
     return rc;
 }
 
+int msc_0x2A_write10(unsigned char lun, int verbose, unsigned long lba, unsigned short count, unsigned char *buf) {
+    int rc;
+    unsigned long transfer_length = 1; // 512 byte
+
+    unsigned char data[4096] = {
+        0x55, 0x53, 0x42, 0x43, // Signature
+        0xA0, 0x59, 0x9b, 0x18, // Tag
+        0x00, 0x10, 0x00, 0x00, // DataTransferLength
+        0x80, 0x00 | lun, 0x0A, // Flag, LUN, CBWCBLength
+        0x2A, 0x00,
+        (unsigned char)(lba >> 24),
+        (unsigned char)(lba >> 16),
+        (unsigned char)(lba >> 8),
+        (unsigned char)(lba >> 0),
+        0x00,
+        (unsigned char)(count >> 8),
+        (unsigned char)(count),
+        0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    int size;
+
+    rc = msc_out("SCSI: Write10 LUN: 0x00", data, 31, verbose);
+    if (rc < 0) {
+        return rc;
+    }
+
+    size = 512 * count;
+    rc = msc_out("SCSI: Data Out LUN", buf, size, verbose);
+    if (rc < 0) {
+        printf("1\n");
+        return rc;
+    }
+
+    size = sizeof(data);
+    rc = msc_in("SCSI: Data In LUN", data, &size, verbose);
+    if (rc < 0) {
+        printf("1\n");
+        return rc;
+    }
+
+    return rc;
+}
+
 
 int runfs() {
     FRESULT res;
@@ -263,6 +319,51 @@ int runfs() {
             printf("f_close2 %d\n", fr);
             return fr;
         }
+    }
+
+    {
+        FRESULT fr;
+        FIL f;
+        BYTE buffer[15360];
+        UINT br, bw;
+
+        {
+            // load b1.uf2
+            FILE *fp;
+            errno_t err;
+
+            //err = fopen_s(&fp, "../termux-usb-examples/b1.uf2", "rb");
+            err = fopen_s(&fp, "../termux-usb-examples/b5.uf2", "rb");
+            if (err) {
+                printf("fopen_s error %d\n", err);
+                return err;
+            }
+            fread(buffer, 1, sizeof(buffer), fp);
+            fclose(fp);
+        }
+
+        printf("-- fopen\n");
+        fr = f_open(&f, "output.uf2", FA_WRITE | FA_CREATE_ALWAYS);
+        if (fr) {
+            printf("f_open1 %d\n", fr);
+            return fr;
+        }
+
+        printf("-- f_write\n");
+        br = sizeof(buffer);
+        fr = f_write(&f, buffer, br, &bw);
+        if (fr) {
+            printf("f_write1 %d\n", fr);
+            return fr;
+        }
+
+        printf("-- f_close\n");
+        fr = f_close(&f);
+        if (fr) {
+            printf("f_close1 %d\n", fr);
+            return fr;
+        }
+
     }
 
     return 0;
@@ -356,3 +457,18 @@ out:
     libusb_exit(context);
 }
 
+DWORD get_fattime(void) {
+    time_t t;
+    struct tm *stm;
+
+
+    t = time(0);
+    stm = localtime(&t);
+
+    return (DWORD)(stm->tm_year - 80) << 25 |
+        (DWORD)(stm->tm_mon + 1) << 21 |
+        (DWORD)stm->tm_mday << 16 |
+        (DWORD)stm->tm_hour << 11 |
+        (DWORD)stm->tm_min << 5 |
+        (DWORD)stm->tm_sec >> 1;
+}

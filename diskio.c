@@ -203,7 +203,17 @@ DRESULT disk_write (
         //    }
         //}
         //res = RES_OK;
-        res = RES_ERROR;
+
+        //res = RES_ERROR;
+
+		//return res;
+
+        res = msc_0x2A_write10(0, 0, sector, count, buff);
+        if (res) {
+            return RES_ERROR;
+        }
+        
+        res = RES_OK;
 
 		return res;
 
