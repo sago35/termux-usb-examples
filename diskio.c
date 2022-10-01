@@ -208,7 +208,7 @@ DRESULT disk_write (
 
 		//return res;
 
-        res = msc_0x2A_write10(0, 0, sector, count, buff);
+        res = msc_0x2A_write10(0, 0, sector, count, (unsigned char *)buff);
         if (res) {
             return RES_ERROR;
         }

@@ -14,6 +14,16 @@ static int ep_out_addr = 0x02;
 unsigned char ff_storage[FF_STORAGE_SIZE];
 FATFS fs;
 
+#ifndef MODE
+#define MODE (2)
+#endif
+
+#define MODE_1_MONITOR (1)
+#define MODE_2_TOUCH (2)
+
+#define ACM_CTRL_DTR 0x001
+#define ACM_CTRL_RTS 0x002
+
 #if 1
 // android
 #define errno_t int
@@ -411,8 +421,23 @@ int main(int argc, char **argv) {
         printf("Serial No: %s\n", buffer);
 
     devh = handle;
+
+    int if_num_max = 3;
+    int mode = MODE;
+    switch (mode) {
+        case MODE_1_MONITOR:
+            if_num_max = 2;
+            break;
+        case MODE_2_TOUCH:
+            if_num_max = 2;
+            break;
+        default:
+            if_num_max = 3;
+            break;
+    }
+
     int rc;
-    for (int if_num = 0; if_num < 3; if_num++) {
+    for (int if_num = 0; if_num < if_num_max; if_num++) {
         if (libusb_kernel_driver_active(devh, if_num)) {
             libusb_detach_kernel_driver(devh, if_num);
         }
@@ -423,52 +448,69 @@ int main(int argc, char **argv) {
         }
     }
 
-    msc_0x12_inquiry(0, 0);
-    msc_0x25_readcapacity(0, 0);
-    {
-        //unsigned char buf[512];
-        //msc_0x28_read10(0, 10, 0, 1, &buf[0]);
-        
-        rc = runfs();
-        if (rc) {
-            printf("runfs error %d\n", rc);
-        }
-    }
-    //sleep(1);
-    //msc_0x28_read10(0, 10, 1);
+    switch (mode) {
+        case MODE_1_MONITOR:
+            printf("mode : monitor (1)\n");
+            rc = libusb_control_transfer(devh, 0x21, 0x22, ACM_CTRL_DTR | ACM_CTRL_RTS, 0, NULL, 0, 0);
+            if (rc < 0) {
+                fprintf(stderr, "Error during control transfer: %s\n", libusb_error_name(rc));
+            }
 
-    if (0) {
-#define ACM_CTRL_DTR 0x001
-#define ACM_CTRL_RTS 0x002
-        rc = libusb_control_transfer(devh, 0x21, 0x22, ACM_CTRL_DTR | ACM_CTRL_RTS, 0, NULL, 0, 0);
-        if (rc < 0) {
-            fprintf(stderr, "Error during control transfer: %s\n", libusb_error_name(rc));
-        }
-
-        if (1) {
             // for USBCDC : 9600bps : 0x8025
             unsigned char encoding[] = { 0x80, 0x25, 0x00, 0x00, 0x00, 0x00, 0x08 };
+
             rc = libusb_control_transfer(devh, 0x21, 0x20, 0, 0, encoding, sizeof(encoding), 0);
-        } else {
+            if (rc < 0) {
+                fprintf(stderr, "Error during control transfer2: %s\n", libusb_error_name(rc));
+            }
+
+            // tytouf/libusb-cdc-example
+            unsigned char buf[1024];
+            int len;
+
+            while (1) {
+                write_chars("tinygo\r\n");
+                len = read_chars(buf, 1024);
+                buf[len] = 0;
+                fprintf(stdout, "%s", buf);
+                sleep(1);
+            }
+            break;
+
+        case MODE_2_TOUCH:
+            printf("mode : touch (2)\n");
+            rc = libusb_control_transfer(devh, 0x21, 0x22, ACM_CTRL_DTR | ACM_CTRL_RTS, 0, NULL, 0, 0);
+            if (rc < 0) {
+                fprintf(stderr, "Error during control transfer: %s\n", libusb_error_name(rc));
+            }
+
             // for enter boot loader : 1200bps : 0x04B0
-            unsigned char encoding[] = { 0xB0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x08 };
-            rc = libusb_control_transfer(devh, 0x21, 0x22, 0, 0, encoding, sizeof(encoding), 0);
-        }
-        if (rc < 0) {
-            fprintf(stderr, "Error during control transfer2: %s\n", libusb_error_name(rc));
-        }
+            unsigned char encoding2[] = { 0xB0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-        // tytouf/libusb-cdc-example
-        unsigned char buf[1024];
-        int len;
+            rc = libusb_control_transfer(devh, 0x21, 0x22, 0, 0, encoding2, sizeof(encoding2), 0);
+            if (rc < 0) {
+                fprintf(stderr, "Error during control transfer2: %s\n", libusb_error_name(rc));
+            }
 
-        while (1) {
-            write_chars("tinygo\r\n");
-            len = read_chars(buf, 1024);
-            buf[len] = 0;
-            fprintf(stdout, "%s", buf);
-            sleep(1);
-        }
+            break;
+
+        default:
+            // flash
+            printf("mode : flash (0)\n");
+            msc_0x12_inquiry(0, 0);
+            msc_0x25_readcapacity(0, 0);
+            {
+                //unsigned char buf[512];
+                //msc_0x28_read10(0, 10, 0, 1, &buf[0]);
+
+                rc = runfs();
+                if (rc) {
+                    printf("runfs error %d\n", rc);
+                }
+            }
+            //sleep(1);
+            //msc_0x28_read10(0, 10, 1);
+            break;
     }
 
 out:
