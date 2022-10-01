@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
+#include <sys/stat.h>
 #include <libusb-1.0/libusb.h>
 #include "ff.h"
 
@@ -324,23 +325,40 @@ int runfs() {
     {
         FRESULT fr;
         FIL f;
-        BYTE buffer[15360];
+        BYTE *buffer;
+        UINT buffer_size;
         UINT br, bw;
 
         {
+            //char *filename = "b1_hello.uf2";
+            char *filename = "b5.uf2";
+
             // load b1.uf2
             FILE *fp;
             errno_t err;
 
-            //err = fopen_s(&fp, "../termux-usb-examples/b1.uf2", "rb");
-            err = fopen_s(&fp, "../termux-usb-examples/b5.uf2", "rb");
+            struct stat st;
+            err = stat(filename, &st);
+            if (err) {
+                printf("stat err %d\n", err);
+                return err;
+            }
+            printf("size %ld\n", st.st_size);
+            buffer = (BYTE *)malloc(st.st_size);
+            buffer_size = st.st_size;
+
+
+            err = fopen_s(&fp, filename, "rb");
             if (err) {
                 printf("fopen_s error %d\n", err);
                 return err;
             }
-            fread(buffer, 1, sizeof(buffer), fp);
+            fread(buffer, 1, buffer_size, fp);
             fclose(fp);
         }
+
+        //printf("stopped\n");
+        //return 1;
 
         printf("-- fopen\n");
         fr = f_open(&f, "output.uf2", FA_WRITE | FA_CREATE_ALWAYS);
@@ -350,7 +368,7 @@ int runfs() {
         }
 
         printf("-- f_write\n");
-        br = sizeof(buffer);
+        br = buffer_size;
         fr = f_write(&f, buffer, br, &bw);
         if (fr) {
             printf("f_write1 %d\n", fr);
