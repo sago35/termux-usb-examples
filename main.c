@@ -473,7 +473,7 @@ int main(int argc, char **argv) {
                 len = read_chars(buf, 1024);
                 buf[len] = 0;
                 fprintf(stdout, "%s", buf);
-                sleep(1);
+                usleep(10 * 1000);
             }
             break;
 
