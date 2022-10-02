@@ -485,12 +485,15 @@ int main(int argc, char **argv) {
             }
 
             // for enter boot loader : 1200bps : 0x04B0
-            unsigned char encoding2[] = { 0xB0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-            rc = libusb_control_transfer(devh, 0x21, 0x22, 0, 0, encoding2, sizeof(encoding2), 0);
+            unsigned char encoding2[] = { 0xB0, 0x04, 0x00, 0x00, 0x00, 0x00, 0x08 };
+            rc = libusb_control_transfer(devh, 0x21, 0x20, 0, 0, encoding2, sizeof(encoding2), 0);
             if (rc < 0) {
                 fprintf(stderr, "Error during control transfer2: %s\n", libusb_error_name(rc));
             }
+
+            // ignore errors
+            libusb_control_transfer(devh, 0x21, 0x22, ACM_CTRL_RTS, 0, NULL, 0, 0);
+            libusb_control_transfer(devh, 0x21, 0x22, 0, 0, NULL, 0, 0);
 
             break;
 
