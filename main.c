@@ -7,7 +7,7 @@
 #include "ff.h"
 
 libusb_device_handle *devh;
-static int ep_in_addr = 0x83;
+static int ep_in_addr = 0x81;
 static int ep_out_addr = 0x02;
 
 #define FF_STORAGE_SIZE (1024*1024)
@@ -15,7 +15,7 @@ unsigned char ff_storage[FF_STORAGE_SIZE];
 FATFS fs;
 
 #ifndef MODE
-#define MODE (2)
+#define MODE (0)
 #endif
 
 #define MODE_1_MONITOR (1)
@@ -100,13 +100,13 @@ void dump(unsigned char *data, int size) {
 }
 
 
-#define MSC_ENDPOINT_OUT (0x05)
-#define MSC_ENDPOINT_IN  (0x84)
+#define MSC_ENDPOINT_OUT (0x02)
+#define MSC_ENDPOINT_IN  (0x81)
 int msc_out(char *msg, unsigned char *data, int size, int verbose) {
     int actual_length;
     int rc = libusb_bulk_transfer(devh, MSC_ENDPOINT_OUT, data, size, &actual_length, 1000);
     if (rc < 0) {
-        fprintf(stderr, "Error during bulk transfer: %s\n", libusb_error_name(rc));
+        fprintf(stderr, "Error during bulk out transfer: %s\n", libusb_error_name(rc));
     }
     if (verbose > 0) {
         printf("%s : %d\n", msg, actual_length);
@@ -121,7 +121,7 @@ int msc_in(char *msg, unsigned char *data, int *size, int verbose) {
     int sz = *size;
     int rc = libusb_bulk_transfer(devh, MSC_ENDPOINT_IN, data, sz, size, 1000);
     if (rc < 0) {
-        fprintf(stderr, "Error during bulk transfer: %s\n", libusb_error_name(rc));
+        fprintf(stderr, "Error during bulk in transfer: %s\n", libusb_error_name(rc));
     }
     if (verbose > 0) {
         printf("%s : %d\n", msg, *size);
@@ -341,7 +341,8 @@ int runfs() {
 
         {
             //char *filename = "b1_hello.uf2";
-            char *filename = "b5.uf2";
+            //char *filename = "b5.uf2";
+            char *filename = "pico_b5.uf2";
 
             // load b1.uf2
             FILE *fp;
@@ -432,16 +433,39 @@ int main(int argc, char **argv) {
             if_num_max = 2;
             break;
         default:
-            if_num_max = 3;
+            if_num_max = 2;
             break;
+    }
+
+    {
+        struct libusb_device_descriptor desc;
+        struct libusb_config_descriptor *config;
+        libusb_get_active_config_descriptor(device, &config);
+
+        for (int j = 0; j < config->bNumInterfaces; j++) {
+            printf("interface %d\n", j);
+            const struct libusb_interface *interf = &config->interface[j];
+            for (int k = 0; k < interf->num_altsetting; k++) {
+                printf("  altsetting %d\n", k);
+                const struct libusb_interface_descriptor *interf_desc = &interf->altsetting[k];
+                for (int l = 0; l < interf_desc->bNumEndpoints; l++) {
+                    printf("    %02X %02X %02X\n", interf_desc->bInterfaceClass, interf_desc->bInterfaceSubClass, interf_desc->bInterfaceProtocol);
+                    const struct libusb_endpoint_descriptor *ep_desc = &interf_desc->endpoint[l];
+                    printf("    endpoint %d %02X\n", l, ep_desc->bEndpointAddress);
+                }
+            }
+        }
+        libusb_free_config_descriptor(config);
     }
 
     int rc;
     for (int if_num = 0; if_num < if_num_max; if_num++) {
         if (libusb_kernel_driver_active(devh, if_num)) {
+            printf("detach\n");
             libusb_detach_kernel_driver(devh, if_num);
         }
         rc = libusb_claim_interface(devh, if_num);
+            printf("%d %d\n", if_num, rc);
         if (rc < 0) {
             fprintf(stderr, "Error claiming interface: %s\n", libusb_error_name(rc));
             goto out;
