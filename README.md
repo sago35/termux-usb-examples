@@ -6,6 +6,15 @@ termux-usb を用いて、以下を実装しました。
 2. USB CDC を用いて最低限のシリアル通信表示を行う
 3. 書き込みを行う
 
+なお、 Raspberry Pi Pico に対しては 1 は動作しますが 3 は動作しません。
+最低限 Endpoint の設定を変える必要があります。
+
+少なくとも以下の環境で動作することを確認しています。
+
+1. Android (Huawai Mate 10 Pro)
+2. Wio Terminal
+
+
 ## 使い方
 
 Makefile に記載の使い方ができます。
