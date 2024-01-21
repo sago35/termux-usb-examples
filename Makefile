@@ -12,6 +12,9 @@ endif
 all: req $(OUT)
 	termux-usb -e ./$(OUT) $(DEVICE_PATH)
 
+list:
+	termux-usb -l
+
 monitor: FORCE
 	termux-usb -e ./u-monitor $(DEVICE_PATH)
 
